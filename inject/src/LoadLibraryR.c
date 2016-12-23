@@ -58,10 +58,9 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 	UINT_PTR uiAddressArray  = 0;
 	UINT_PTR uiNameOrdinals  = 0;
 	DWORD dwCounter          = 0;
-#ifdef WIN_X64
+#if _M_X64
 	DWORD dwCompiledArch = 2;
 #else
-	// This will catch Win32 and WinRT.
 	DWORD dwCompiledArch = 1;
 #endif
 

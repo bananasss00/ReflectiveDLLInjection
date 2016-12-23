@@ -48,14 +48,6 @@ typedef DWORD  (NTAPI * NTFLUSHINSTRUCTIONCACHE)( HANDLE, PVOID, ULONG );
 #define VIRTUALALLOC_HASH				0x91AFCA54
 #define NTFLUSHINSTRUCTIONCACHE_HASH	0x534C0AB8
 
-#define IMAGE_REL_BASED_ARM_MOV32A		5
-#define IMAGE_REL_BASED_ARM_MOV32T		7
-
-#define ARM_MOV_MASK					(DWORD)(0xFBF08000)
-#define ARM_MOV_MASK2					(DWORD)(0xFBF08F00)
-#define ARM_MOVW						0xF2400000
-#define ARM_MOVT						0xF2C00000
-
 #define HASH_KEY						13
 //===============================================================================================//
 #pragma intrinsic( _rotr )
