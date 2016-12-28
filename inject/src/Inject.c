@@ -65,8 +65,10 @@ int main( int argc, char * argv[] )
             {
                 printf(
                     "Usage: inject [pid] [dll_file] [RT|SC]\n"
-                    "\t RT - Remote Thread injection (default)\n"
-                    "\t SC - Set Thread Context injection\n");
+                    "\t CRT - Create Remote Thread injection (default)\n"
+                    "\t STC - Set Thread Context injection\n"
+                    "\t QUA - Queue User APC injection\n"
+                    );
                 return -1;
             }
 
@@ -81,13 +83,17 @@ int main( int argc, char * argv[] )
 
         if (argc >= 4)
         {
-            if (0 == lstrcmpi(argv[3], "RT"))
+            if (0 == lstrcmpi(argv[3], "CRT"))
             {
                 injectType = kCreateRemoteThread;
             }
-            else if (0 == lstrcmpi(argv[3], "SC"))
+            else if (0 == lstrcmpi(argv[3], "STC"))
             {
                 injectType = kSetThreadContext;
+            }
+            else if (0 == lstrcmpi(argv[3], "QUA"))
+            {
+                injectType = kQueueUserAPC;
             }
         }
 

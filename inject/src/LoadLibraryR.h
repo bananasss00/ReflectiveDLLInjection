@@ -33,7 +33,8 @@
 typedef enum _InjectType
 {
     kCreateRemoteThread,
-    kSetThreadContext
+    kSetThreadContext,
+    kQueueUserAPC
 } InjectType;
 
 inline const char* InjectTypeToString(InjectType injectType)
@@ -44,7 +45,10 @@ inline const char* InjectTypeToString(InjectType injectType)
         return "CreateRemoteThread";
 
     case kSetThreadContext:
-        return "kSetThreadContext";
+        return "SetThreadContext";
+
+    case kQueueUserAPC:
+        return "QueueUserAPC";
 
     default:
         return "Unknown!";
