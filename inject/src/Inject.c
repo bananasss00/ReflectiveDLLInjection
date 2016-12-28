@@ -29,6 +29,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <conio.h>
 #include "LoadLibraryR.h"
 
 #pragma comment(lib,"Advapi32.lib")
@@ -39,32 +40,58 @@
 int main( int argc, char * argv[] )
 {
 	HANDLE hFile          = NULL;
-	HANDLE hModule        = NULL;
 	HANDLE hProcess       = NULL;
 	HANDLE hToken         = NULL;
 	LPVOID lpBuffer       = NULL;
 	DWORD dwLength        = 0;
 	DWORD dwBytesRead     = 0;
-	DWORD dwProcessId     = 0;
+	DWORD dwProcessId     = GetCurrentProcessId();
 	TOKEN_PRIVILEGES priv = {0};
-
-#if _M_X64
-	char * cpDllFile  = "reflective_dll.x64.dll";
-#elif _M_IX86
-	char * cpDllFile  = "reflective_dll.dll";
-#endif
+	char* cpDllFile       = "reflective_dll.dll";
 
 	do
 	{
 		// Usage: inject.exe [pid] [dll_file]
+        
+        InjectType injectType = kCreateRemoteThread;
 
-		if( argc == 1 )
-			dwProcessId = GetCurrentProcessId();
-		else
-			dwProcessId = atoi( argv[1] );
+        if (argc >= 2)
+        {
+            if (0 == lstrcmpi(argv[1], "help")
+                || 0 == lstrcmpi(argv[1], "?") 
+                || 0 == lstrcmpi(argv[1], "/?") 
+                || 0 == lstrcmpi(argv[1], "-help") 
+                || 0 == lstrcmpi(argv[1], "--help"))
+            {
+                printf(
+                    "Usage: inject [pid] [dll_file] [RT|SC]\n"
+                    "\t RT - Remote Thread injection (default)\n"
+                    "\t SC - Set Thread Context injection\n");
+                return -1;
+            }
 
-		if( argc >= 3 )
+            if (atoi(argv[1]) > 0)
+            {
+                dwProcessId = atoi(argv[1]);
+            }
+        }
+
+		if (argc >= 3)
 			cpDllFile = argv[2];
+
+        if (argc >= 4)
+        {
+            if (0 == lstrcmpi(argv[3], "RT"))
+            {
+                injectType = kCreateRemoteThread;
+            }
+            else if (0 == lstrcmpi(argv[3], "SC"))
+            {
+                injectType = kSetThreadContext;
+            }
+        }
+
+        printf("Inject type: %s\n", InjectTypeToString(injectType));
 
 		hFile = CreateFileA( cpDllFile, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
 		if( hFile == INVALID_HANDLE_VALUE )
@@ -92,18 +119,20 @@ int main( int argc, char * argv[] )
 			CloseHandle( hToken );
 		}
 
-		hProcess = OpenProcess( PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, dwProcessId );
+		hProcess = OpenProcess( PROCESS_ALL_ACCESS, FALSE, dwProcessId );
 		if( !hProcess )
 			BREAK_WITH_ERROR( "Failed to open the target process" );
 
-		hModule = LoadRemoteLibraryR( hProcess, lpBuffer, dwLength, NULL );
-		if( !hModule )
+		if( !LoadRemoteLibraryR(hProcess, lpBuffer, dwLength, NULL, injectType) )
 			BREAK_WITH_ERROR( "Failed to inject the DLL" );
 
-		printf( "[+] Injected the '%s' DLL into process %d.", cpDllFile, dwProcessId );
+		printf( "[+] Injected the '%s' DLL into process %d.\n", cpDllFile, dwProcessId );
 		
-		WaitForSingleObject( hModule, -1 );
-
+        if (dwProcessId == GetCurrentProcessId())
+        {
+            printf("Press any key to exit...\n");
+            _getche();
+        }
 	} while( 0 );
 
 	if( lpBuffer )

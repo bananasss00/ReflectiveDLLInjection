@@ -30,11 +30,32 @@
 //===============================================================================================//
 #include "ReflectiveDLLInjection.h"
 
+typedef enum _InjectType
+{
+    kCreateRemoteThread,
+    kSetThreadContext
+} InjectType;
+
+inline const char* InjectTypeToString(InjectType injectType)
+{
+    switch (injectType)
+    {
+    case kCreateRemoteThread:
+        return "CreateRemoteThread";
+
+    case kSetThreadContext:
+        return "kSetThreadContext";
+
+    default:
+        return "Unknown!";
+    }
+}
+
 DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer );
 
 HMODULE WINAPI LoadLibraryR( LPVOID lpBuffer, DWORD dwLength );
 
-HANDLE WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLength, LPVOID lpParameter );
+BOOL WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLength, LPVOID lpParameter, InjectType injectType);
 
 //===============================================================================================//
 #endif
