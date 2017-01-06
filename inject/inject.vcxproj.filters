@@ -11,24 +11,24 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\GetProcAddressR.c">
+    <ClCompile Include="src\LoadLibraryR.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Inject.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\LoadLibraryR.c">
+    <ClCompile Include="src\Inject.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\GetProcAddressR.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\LoadLibraryR.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\ReflectiveDLLInjection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\InjectType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\LoaderType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

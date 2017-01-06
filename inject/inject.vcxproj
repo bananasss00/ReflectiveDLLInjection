@@ -178,12 +178,12 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\GetProcAddressR.c" />
-    <ClCompile Include="src\Inject.c" />
-    <ClCompile Include="src\LoadLibraryR.c" />
+    <ClCompile Include="src\Inject.cpp" />
+    <ClCompile Include="src\LoadLibraryR.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\GetProcAddressR.h" />
+    <ClInclude Include="src\InjectType.h" />
+    <ClInclude Include="src\LoaderType.h" />
     <ClInclude Include="src\LoadLibraryR.h" />
     <ClInclude Include="src\ReflectiveDLLInjection.h" />
   </ItemGroup>

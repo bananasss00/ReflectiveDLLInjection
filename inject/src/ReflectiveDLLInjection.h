@@ -48,6 +48,8 @@ typedef BOOL (WINAPI * DLLMAIN)( HINSTANCE, DWORD, LPVOID );
 
 #define DLLEXPORT   __declspec( dllexport ) 
 
+#define GOTO_CLEANUP_WITH_ERROR( e ) { printf( "[-] %s. Error=%d", e, GetLastError() ); goto cleanup; }
+
 //===============================================================================================//
 #endif
 //===============================================================================================//

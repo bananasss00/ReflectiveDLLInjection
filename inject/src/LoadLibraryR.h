@@ -25,42 +25,10 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
-#ifndef _REFLECTIVEDLLINJECTION_LOADLIBRARYR_H
-#define _REFLECTIVEDLLINJECTION_LOADLIBRARYR_H
-//===============================================================================================//
+#pragma once
 #include "ReflectiveDLLInjection.h"
+#include "InjectType.h"
+#include "LoaderType.h"
 
-typedef enum _InjectType
-{
-    kCreateRemoteThread,
-    kSetThreadContext,
-    kQueueUserAPC
-} InjectType;
-
-inline const char* InjectTypeToString(InjectType injectType)
-{
-    switch (injectType)
-    {
-    case kCreateRemoteThread:
-        return "CreateRemoteThread";
-
-    case kSetThreadContext:
-        return "SetThreadContext";
-
-    case kQueueUserAPC:
-        return "QueueUserAPC";
-
-    default:
-        return "Unknown!";
-    }
-}
-
-DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer );
-
-HMODULE WINAPI LoadLibraryR( LPVOID lpBuffer, DWORD dwLength );
-
-BOOL WINAPI LoadRemoteLibraryR( HANDLE hProcess, LPVOID lpBuffer, DWORD dwLength, LPVOID lpParameter, InjectType injectType);
-
-//===============================================================================================//
-#endif
-//===============================================================================================//
+BOOL WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPCSTR dllName, InjectType injectType, LPVOID lpParameter);
+BOOL WINAPI LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType injectType);
