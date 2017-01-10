@@ -4,17 +4,19 @@ This tool demonstrates various remote dll injection methods.
 
 # Usage
 
-Usage: inject [pid] [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]
+Usage: `inject [pid] [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]`
 
-CRT   - CreateRemoteThread injection (default)
-STC   - SetThreadContext injection
-QUA   - QueueUserApc injection
-NQAT  - NtQueueApcThread injection
-NQATE - NtQueueApcThreadEx injection
+#### Injection types
+* CRT   - CreateRemoteThread injection (default)
+* STC   - SetThreadContext injection
+* QUA   - QueueUserApc injection
+* NQAT  - NtQueueApcThread injection
+* NQATE - NtQueueApcThreadEx injection
 
-R     - Reflective loader (default)
-LW    - LoadLibraryW loader
-LA    - LoadLibraryA loader
+#### Loader types
+* R     - Reflective loader (default)
+* LW    - LoadLibraryW loader
+* LA    - LoadLibraryA loader
 
 # Build
 
