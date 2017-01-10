@@ -4,7 +4,9 @@ enum InjectType
 {
     kCreateRemoteThread,
     kSetThreadContext,
-    kQueueUserAPC
+    kQueueUserAPC,
+    kNtQueueApcThread,
+    kNtQueueApcThreadEx
 };
 
 inline const char* InjectTypeToString(InjectType injectType)

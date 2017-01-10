@@ -55,12 +55,14 @@ int main(int argc, char * argv[])
         {
             printf(
                 "Usage: inject [pid] [dll_file] [CRT|STC|QUA] [R|L]\n"
-                "\t CRT - Create Remote Thread injection (default)\n"
-                "\t STC - Set Thread Context injection\n"
-                "\t QUA - Queue User APC injection\n"
-                "\t R   - Reflective loader (default)\n"
-                "\t LW  - LoadLibraryW loader\n"
-                "\t LA  - LoadLibraryA loader\n"
+                "\t CRT   - CreateRemoteThread injection (default)\n"
+                "\t STC   - SetThreadContext injection\n"
+                "\t QUA   - QueueUserApc injection\n"
+                "\t NQAT  - NtQueueApcThread injection\n"
+                "\t NQATE - NtQueueApcThreadEx injection\n"
+                "\t R     - Reflective loader (default)\n"
+                "\t LW    - LoadLibraryW loader\n"
+                "\t LA    - LoadLibraryA loader\n"
                 );
             return -1;
         }
@@ -89,6 +91,14 @@ int main(int argc, char * argv[])
         else if (0 == lstrcmpi(argv[3], "QUA"))
         {
             injectType = kQueueUserAPC;
+        }
+        else if (0 == lstrcmpi(argv[3], "NQAT"))
+        {
+            injectType = kNtQueueApcThread;
+        }
+        else if (0 == lstrcmpi(argv[3], "NQATE"))
+        {
+            injectType = kNtQueueApcThreadEx;
         }
     }
 

