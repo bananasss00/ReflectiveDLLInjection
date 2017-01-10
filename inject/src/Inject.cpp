@@ -54,7 +54,7 @@ int main(int argc, char * argv[])
             || 0 == lstrcmpi(argv[1], "--help"))
         {
             printf(
-                "Usage: inject [pid] [dll_file] [CRT|STC|QUA] [R|L]\n"
+                "Usage: inject [pid] [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
                 "\t CRT   - CreateRemoteThread injection (default)\n"
                 "\t STC   - SetThreadContext injection\n"
                 "\t QUA   - QueueUserApc injection\n"

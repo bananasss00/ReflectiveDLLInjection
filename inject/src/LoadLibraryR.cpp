@@ -31,6 +31,7 @@
 #include <assert.h>
 #include <string>
 #include <vector>
+#include <functional>
 #include <atlbase.h>
 
 using namespace std;
@@ -435,9 +436,9 @@ void APCProcEnd()
 }
 #pragma runtime_checks("", restore)
 
-bool InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE startRoutine, PVOID lpParameter)
+bool InjectUsingAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter, function<bool(PAPCFUNC, HANDLE, ULONG_PTR)> func)
 {
-    const DWORD processId = ::GetProcessId(hProcess);
+    const DWORD processId = ::GetProcessId(process);
     const DWORD currentThreadId = ::GetCurrentThreadId();
 
     if (processId == ::GetCurrentProcessId())
@@ -446,14 +447,14 @@ bool InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE startRoutin
         ::YieldProcessor();
     }
 
-    auto mem = ::VirtualAllocEx(hProcess, NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    auto mem = ::VirtualAllocEx(process, NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!mem)
     {
         printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
         return false;
     }
 
-    if (!::WriteProcessMemory(hProcess, mem, &APCProc, (DWORD_PTR)&APCProcEnd - (DWORD_PTR)&APCProc, NULL))
+    if (!::WriteProcessMemory(process, mem, &APCProc, (DWORD_PTR)&APCProcEnd - (DWORD_PTR)&APCProc, NULL))
     {
         return false;
     }
@@ -474,7 +475,7 @@ bool InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE startRoutin
 
         printf("\nHijacking target thread.");
 
-        if (!::QueueUserAPC(reinterpret_cast<PAPCFUNC>(mem), targetThread, reinterpret_cast<DWORD_PTR>(startRoutine)))
+        if (!func(reinterpret_cast<PAPCFUNC>(mem), targetThread, reinterpret_cast<DWORD_PTR>(startRoutine)))
         {
             printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
             continue;
@@ -482,6 +483,49 @@ bool InjectUsingQueueUserAPC(HANDLE hProcess, LPTHREAD_START_ROUTINE startRoutin
     }
 
     return TRUE;
+}
+
+bool InjectUsingQueueUserAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter)
+{
+    return InjectUsingAPC(process, startRoutine, parameter, [](PAPCFUNC startRoutine, HANDLE thread, ULONG_PTR parameter)
+    { 
+        return !!::QueueUserAPC(startRoutine, thread, parameter); 
+    });
+}
+
+bool InjectUsingNtQueueApcThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter)
+{
+    typedef LONG (NTAPI *PFN_NtQueueApcThread)(
+        IN HANDLE ThreadHandle,
+        IN PVOID ApcRoutine,
+        IN PVOID NormalContext,
+        IN PVOID SystemArgument1,
+        IN PVOID SystemArgument2);
+
+    static auto myNtQueueApcThread = reinterpret_cast<PFN_NtQueueApcThread>(::GetProcAddress(::GetModuleHandle("ntdll"), "NtQueueApcThread"));
+
+    return InjectUsingAPC(process, startRoutine, parameter, [&](PAPCFUNC startRoutine, HANDLE thread, ULONG_PTR parameter)
+    {
+        return 0 == myNtQueueApcThread(thread, startRoutine, reinterpret_cast<PVOID>(parameter), nullptr, nullptr);
+    });
+}
+
+bool InjectUsingNtQueueApcThreadEx(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter)
+{
+    typedef LONG (NTAPI *PFN_NtQueueApcThreadEx)(
+        IN HANDLE ThreadHandle,
+        IN HANDLE ApcReserve,
+        IN PVOID ApcRoutine,
+        IN PVOID NormalContext,
+        IN PVOID SystemArgument1,
+        IN PVOID SystemArgument2);
+
+    static auto myNtQueueApcThreadEx = reinterpret_cast<PFN_NtQueueApcThreadEx>(::GetProcAddress(::GetModuleHandle("ntdll"), "NtQueueApcThreadEx"));
+
+    return InjectUsingAPC(process, startRoutine, parameter, [&](PAPCFUNC startRoutine, HANDLE thread, ULONG_PTR parameter)
+    {
+        return 0 == myNtQueueApcThreadEx(thread, nullptr, startRoutine, reinterpret_cast<PVOID>(parameter), nullptr, nullptr);
+    });
 }
 
 BOOL WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPCSTR dllName, InjectType injectType, LPVOID lpParameter)
@@ -548,6 +592,12 @@ BOOL WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPCSTR dllName, InjectType injec
 
     case kQueueUserAPC:
         return InjectUsingQueueUserAPC(hProcess, reflectiveLoader, lpParameter);
+
+    case kNtQueueApcThread:
+        return InjectUsingNtQueueApcThread(hProcess, reflectiveLoader, lpParameter);
+
+    case kNtQueueApcThreadEx:
+        return InjectUsingNtQueueApcThreadEx(hProcess, reflectiveLoader, lpParameter);
     }
 
 cleanup:
