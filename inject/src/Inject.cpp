@@ -30,9 +30,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <conio.h>
+#include <atlbase.h>
 #include "LoadLibraryR.h"
 
 #pragma comment(lib,"Advapi32.lib")
+
+using namespace ATL;
 
 // Simple app to inject a reflective DLL into a process vis its process ID.
 int main(int argc, char * argv[])
@@ -56,7 +59,8 @@ int main(int argc, char * argv[])
                 "\t STC - Set Thread Context injection\n"
                 "\t QUA - Queue User APC injection\n"
                 "\t R   - Reflective loader (default)\n"
-                "\t L   - LoadLibrary loader\n"
+                "\t LW  - LoadLibraryW loader\n"
+                "\t LA  - LoadLibraryA loader\n"
                 );
             return -1;
         }
@@ -94,9 +98,13 @@ int main(int argc, char * argv[])
         {
             loaderType = kReflectiveLoader;
         }
-        else if (0 == lstrcmpi(argv[4], "L"))
+        else if (0 == lstrcmpi(argv[4], "LW"))
         {
-            loaderType = kLoadLibrary;
+            loaderType = kLoadLibraryW;
+        }
+        else if (0 == lstrcmpi(argv[4], "LA"))
+        {
+            loaderType = kLoadLibraryA;
         }
     }
 
@@ -134,7 +142,14 @@ int main(int argc, char * argv[])
         }
         break;
 
-    case kLoadLibrary:
+    case kLoadLibraryW:
+        if (!LoadRemoteLibrary(hProcess, CA2W(dllFile), injectType))
+        {
+            GOTO_CLEANUP_WITH_ERROR("Failed to inject the DLL");
+        }
+        break;
+
+    case kLoadLibraryA:
         if (!LoadRemoteLibrary(hProcess, dllFile, injectType))
         {
             GOTO_CLEANUP_WITH_ERROR("Failed to inject the DLL");

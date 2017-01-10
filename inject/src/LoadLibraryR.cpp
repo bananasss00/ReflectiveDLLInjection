@@ -29,6 +29,9 @@
 #include <stdio.h>
 #include <TlHelp32.h>
 #include <assert.h>
+#include <string>
+
+using namespace std;
 
 //===============================================================================================//
 DWORD Rva2Offset( DWORD dwRva, UINT_PTR uiBaseAddress )
@@ -143,7 +146,7 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 // Note: This function currently cant inject accross architectures, but only to architectures which are the 
 //       same as the arch this function is compiled as, e.g. x86->x86 and x64->x64 but not x64->x86 or x86->x64.
 
-BOOL InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
+bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
 {
     HANDLE thread = ::CreateRemoteThread(process, NULL, 1024 * 1024, startRoutine, parameter, 0, NULL);
 
@@ -552,11 +555,13 @@ cleanup:
     return FALSE;
 }
 
-BOOL WINAPI LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType injectType)
+template<class CharT>
+bool LoadRemoteLibrary(HANDLE hProcess, const basic_string<CharT>& dllName, InjectType injectType)
 {
-    auto loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(::GetProcAddress(::GetModuleHandle("kernel32"), "LoadLibraryA"));
+    const LPCSTR kLoadLibraryProcName = sizeof(CharT) == sizeof(char) ? "LoadLibraryA" : "LoadLibraryW";
+    auto loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(::GetProcAddress(::GetModuleHandle("kernel32"), kLoadLibraryProcName));
 
-    // alloc memory (RWX) in the host process for the image...
+    // alloc memory (RW) in the host process for the image...
     LPVOID remoteDllName = ::VirtualAllocEx(hProcess, nullptr, 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (!remoteDllName)
     {
@@ -564,7 +569,7 @@ BOOL WINAPI LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType inject
     }
 
     // write the image into the host process...
-    if (!::WriteProcessMemory(hProcess, remoteDllName, dllName, ::strlen(dllName) + 1, nullptr))
+    if (!::WriteProcessMemory(hProcess, remoteDllName, dllName.c_str(), (dllName.size() + 1) * sizeof(CharT), nullptr))
     {
         return FALSE;
     }
@@ -580,5 +585,15 @@ BOOL WINAPI LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType inject
 
 cleanup:
     return FALSE;
+}
+
+bool LoadRemoteLibrary(HANDLE hProcess, LPCWSTR dllName, InjectType injectType)
+{
+    return LoadRemoteLibrary(hProcess, wstring(dllName), injectType);
+}
+
+bool LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType injectType)
+{
+    return LoadRemoteLibrary(hProcess, string(dllName), injectType);
 }
 //===============================================================================================//

@@ -3,7 +3,8 @@
 enum LoaderType
 {
     kReflectiveLoader,
-    kLoadLibrary
+    kLoadLibraryW,
+    kLoadLibraryA
 };
 
 inline const char* LoaderTypeToString(LoaderType loaderType)
@@ -13,8 +14,11 @@ inline const char* LoaderTypeToString(LoaderType loaderType)
     case kReflectiveLoader:
         return "ReflectiveLoader";
 
-    case kLoadLibrary:
-        return "LoadLibrary";
+    case kLoadLibraryW:
+        return "LoadLibraryW";
+
+    case kLoadLibraryA:
+        return "LoadLibraryA";
 
     default:
         return "Unknown!";

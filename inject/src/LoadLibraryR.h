@@ -31,4 +31,6 @@
 #include "LoaderType.h"
 
 BOOL WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPCSTR dllName, InjectType injectType, LPVOID lpParameter);
-BOOL WINAPI LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType injectType);
+
+bool LoadRemoteLibrary(HANDLE hProcess, LPCWSTR dllName, InjectType injectType);
+bool LoadRemoteLibrary(HANDLE hProcess, LPCSTR dllName, InjectType injectType);
