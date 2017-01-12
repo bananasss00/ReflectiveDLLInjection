@@ -22,6 +22,12 @@ inline const char* InjectTypeToString(InjectType injectType)
     case kQueueUserAPC:
         return "QueueUserAPC";
 
+    case kNtQueueApcThread:
+        return "NtQueueApcThread";
+
+    case kNtQueueApcThreadEx:
+        return "NtQueueApcThreadEx";
+
     default:
         return "Unknown!";
     }
