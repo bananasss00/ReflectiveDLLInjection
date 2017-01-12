@@ -4,7 +4,7 @@ This tool demonstrates various remote dll injection methods.
 
 # Usage
 
-Usage: `inject [pid] [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]`
+Usage: `inject <pid> [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]`
 
 #### Injection types
 * CRT   - CreateRemoteThread injection (default)
