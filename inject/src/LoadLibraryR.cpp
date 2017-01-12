@@ -183,14 +183,9 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 
 bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
 {
-    HANDLE thread = ::CreateRemoteThread(process, NULL, 1024 * 1024, startRoutine, parameter, 0, NULL);
-
-    if (thread)
-    {
-        ::CloseHandle(thread);
-    }
-
-    return !!thread;
+    CHandle remoteThread(::CreateRemoteThread(process, nullptr, 0x100000, startRoutine, parameter, 0, nullptr));
+    
+    return !!remoteThread;
 }
 
 #if _M_X64
@@ -402,69 +397,26 @@ BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpRefle
     return TRUE;
 }
 
-#pragma runtime_checks("", off)
-VOID CALLBACK APCProc(ULONG_PTR dwParam)
-{
-    // Check activation context stack
-#if _M_IX86
-    if (0 == __readfsdword(0x1a8)) 
-#elif _M_X64
-    if (0 == __readgsqword(0x2c8))
-#endif
-    {
-        return;
-    }
-
-    LPTHREAD_START_ROUTINE lpReflectiveLoader = (LPTHREAD_START_ROUTINE)dwParam;
-    lpReflectiveLoader(NULL);
-}
-
-void APCProcEnd()
-{
-}
-#pragma runtime_checks("", restore)
-
 bool InjectUsingAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter, function<bool(PAPCFUNC, HANDLE, ULONG_PTR)> func)
 {
-    auto mem = ::VirtualAllocEx(process, NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    if (!mem)
-    {
-        printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
-        return false;
-    }
+    // Create suspended thread to force APC delivery.
+    CHandle remoteThread(::CreateRemoteThread(process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(&ExitThread), 0, CREATE_SUSPENDED, nullptr));
 
-    if (!::WriteProcessMemory(process, mem, &APCProc, (DWORD_PTR)&APCProcEnd - (DWORD_PTR)&APCProc, NULL))
+    if (!remoteThread)
     {
         return false;
     }
 
-    const DWORD processId = ::GetProcessId(process);
-    const DWORD currentThreadId = ::GetCurrentThreadId();
-
-    for (auto tid : getProcessThreads(processId))
+    // Inject APC into created thread.
+    if (!func(reinterpret_cast<PAPCFUNC>(startRoutine), remoteThread, reinterpret_cast<DWORD_PTR>(parameter)))
     {
-        if (tid == currentThreadId)
-        {
-            continue;
-        }
-
-        CHandle targetThread(::OpenThread(THREAD_ALL_ACCESS, FALSE, tid));
-        if (!targetThread)
-        {
-            printf("\nError: Unable to open target thread handle (%d)\n", GetLastError());
-            continue;
-        }
-
-        printf("\nHijacking target thread.");
-
-        if (!func(reinterpret_cast<PAPCFUNC>(mem), targetThread, reinterpret_cast<DWORD_PTR>(startRoutine)))
-        {
-            printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
-            continue;
-        }        
+        printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
+        return false;
     }
 
-    return TRUE;
+    ::ResumeThread(remoteThread);
+
+    return true;
 }
 
 bool InjectUsingQueueUserAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter)
@@ -589,17 +541,16 @@ cleanup:
 template<class CharT>
 bool LoadRemoteLibrary(HANDLE hProcess, const basic_string<CharT>& dllName, InjectType injectType)
 {
-    const LPCSTR kLoadLibraryProcName = sizeof(CharT) == sizeof(char) ? "LoadLibraryA" : "LoadLibraryW";
-    auto loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(::GetProcAddress(::GetModuleHandle("kernel32"), kLoadLibraryProcName));
+    auto loadLibrary = sizeof(CharT) == sizeof(char) ? reinterpret_cast<LPTHREAD_START_ROUTINE>(&LoadLibraryA) : reinterpret_cast<LPTHREAD_START_ROUTINE>(&LoadLibraryW);
 
-    // alloc memory (RW) in the host process for the image...
+    // alloc memory (RW) in the host process for the dll name...
     LPVOID remoteDllName = ::VirtualAllocEx(hProcess, nullptr, 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (!remoteDllName)
     {
         return FALSE;
     }
 
-    // write the image into the host process...
+    // write the dll name into the host process...
     if (!::WriteProcessMemory(hProcess, remoteDllName, dllName.c_str(), (dllName.size() + 1) * sizeof(CharT), nullptr))
     {
         return FALSE;
@@ -609,6 +560,18 @@ bool LoadRemoteLibrary(HANDLE hProcess, const basic_string<CharT>& dllName, Inje
     {
     case kCreateRemoteThread:
         return InjectUsingCreateRemoteThread(hProcess, loadLibrary, remoteDllName);
+
+    case kSetThreadContext:
+        return InjectUsingSetThreadContext(hProcess, loadLibrary, remoteDllName);
+
+    case kQueueUserAPC:
+        return InjectUsingQueueUserAPC(hProcess, loadLibrary, remoteDllName);
+
+    case kNtQueueApcThread:
+        return InjectUsingNtQueueApcThread(hProcess, loadLibrary, remoteDllName);
+
+    case kNtQueueApcThreadEx:
+        return InjectUsingNtQueueApcThreadEx(hProcess, loadLibrary, remoteDllName);
 
     default:
         GOTO_CLEANUP_WITH_ERROR("Not supported");
