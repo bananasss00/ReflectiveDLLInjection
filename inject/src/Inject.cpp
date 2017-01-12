@@ -106,7 +106,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    printf("pid: %d\n", processId);
+    printf("PID        : %d\n", processId);
     printf("Inject type: %s\n", InjectTypeToString(injectType));
     printf("Loader type: %s\n", LoaderTypeToString(loaderType));
 

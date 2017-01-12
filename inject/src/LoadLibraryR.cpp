@@ -27,46 +27,13 @@
 //===============================================================================================//
 #include "LoadLibraryR.h"
 #include <stdio.h>
-#include <TlHelp32.h>
 #include <assert.h>
 #include <string>
-#include <vector>
 #include <functional>
 #include <atlbase.h>
 
 using namespace std;
 using namespace ATL;
-
-vector<DWORD> getProcessThreads(DWORD pid)
-{
-    auto snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (INVALID_HANDLE_VALUE == snapshot)
-    {
-        return {};
-    }
-
-    THREADENTRY32 te32;
-    te32.dwSize = sizeof(te32);
-
-    if (!::Thread32First(snapshot, &te32))
-    {
-        ::CloseHandle(snapshot);
-        return {};
-    }
-
-    vector<DWORD> tids;
-
-    do 
-    {
-        if (te32.th32OwnerProcessID == pid)
-        {
-            tids.push_back(te32.th32ThreadID);
-        }
-    } while (::Thread32Next(snapshot, &te32));
-
-    ::CloseHandle(snapshot);
-    return tids;
-}
 
 //===============================================================================================//
 DWORD Rva2Offset( DWORD dwRva, UINT_PTR uiBaseAddress )
@@ -171,15 +138,6 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 
 	return 0;
 }
-//===============================================================================================//
-// Loads a PE image from memory into the address space of a host process via the image's exported ReflectiveLoader function
-// Note: You must compile whatever you are injecting with REFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR 
-//       defined in order to use the correct RDI prototypes.
-// Note: The hProcess handle must have these access rights: PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | 
-//       PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ
-// Note: If you are passing in an lpParameter value, if it is a pointer, remember it is for a different address space.
-// Note: This function currently cant inject across architectures, but only to architectures which are the 
-//       same as the arch this function is compiled as, e.g. x86->x86 and x64->x64 but not x64->x86 or x86->x64.
 
 bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
 {
@@ -188,8 +146,8 @@ bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startR
     return !!remoteThread;
 }
 
+const byte kShell[] =
 #if _M_X64
-const unsigned char shell[] =
 {
     0x90,
     0x50,                                           // push        rax
@@ -248,7 +206,6 @@ const unsigned char shell[] =
     0xC3,                                           // ret
 };
 #elif _M_IX86
-const unsigned char shell[] =
 {
     0x90,
     0x50,                   //push        eax
@@ -267,134 +224,64 @@ const unsigned char shell[] =
 };
 #endif
 
-BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
+bool InjectUsingSetThreadContext(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter)
 {
-    PDWORD_PTR pdwptr = NULL;
-    THREADENTRY32 te32;
-    CONTEXT ctx;
-    LPBYTE ptr = 0;
-    PVOID mem = 0;
-    int found = 0;
-    HANDLE hSnap = NULL;
-    DWORD processId = GetProcessId(hProcess);
-    DWORD currentThreadId = GetCurrentThreadId();
-    DWORD targetThreadId = 0;
-    HANDLE targetThread = NULL;
-    
-    hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);;
+    // Create suspended thread to hijack it.
+    CHandle remoteThread(::CreateRemoteThread(process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(&ExitThread), 0, CREATE_SUSPENDED, nullptr));
 
-    te32.dwSize = sizeof(te32);
+    if (!remoteThread)
+    {
+        return false;
+    }
+
+    CONTEXT ctx = {};
     ctx.ContextFlags = CONTEXT_FULL;
 
-    Thread32First(hSnap, &te32);
-    printf("\nFinding a thread to hijack.\n");
-
-    while (Thread32Next(hSnap, &te32))
+    if (!::GetThreadContext(remoteThread, &ctx))
     {
-        if (te32.th32OwnerProcessID == processId)
-        {
-            if (currentThreadId == te32.th32ThreadID)
-            {
-                continue;
-            }
+        printf("\n Error: GetThreadContext failed %d\n", GetLastError());
+        return false;
+    }
 
-            targetThreadId = te32.th32ThreadID;
-
-            printf("\nTarget thread found. Thread ID: %d", targetThreadId);
-
-            printf("\nAllocating memory in target process.");
-
-            mem = VirtualAllocEx(hProcess, NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-
-            if (!mem)
-            {
-                printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
-                continue;
-            }
-
-            printf("\nMemory allocated at %p", mem);
-            printf("\nOpening target thread handle %d.", targetThreadId);
-
-            targetThread = OpenThread(THREAD_ALL_ACCESS, FALSE, targetThreadId);
-
-            if (!targetThread)
-            {
-                printf("\nError: Unable to open target thread handle (%d)\n", GetLastError());
-                continue;
-            }
-
-            printf("\nSuspending target thread.");
-
-            SuspendThread(targetThread);
-            if (!GetThreadContext(targetThread, &ctx))
-            {
-                printf("\n Error: GetThreadContext failed %d\n", GetLastError());
-                ResumeThread(targetThread);
-                continue;
-            }
-
-            // shellcode
-            ptr = (LPBYTE)VirtualAlloc(NULL, 65536, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (!ptr)
-            {
-                ResumeThread(targetThread);
-                printf("\nError: no memory\n");
-                continue;
-            }
-
-            memcpy(ptr, shell, sizeof(shell));
+    byte shell[sizeof(kShell)];
+    memcpy(shell, kShell, sizeof(kShell));
 
 #if _M_IX86
-            pdwptr = (PDWORD)(((char*)ptr) + 5);
-            *pdwptr = ctx.Eip;
-
-            pdwptr = (PDWORD)(((char*)ptr) + 14);
-            *pdwptr = (DWORD_PTR)lpParameter;
-
-            pdwptr = (PDWORD)(((char*)ptr) + 20);
-            *pdwptr = (DWORD_PTR)lpReflectiveLoader;
+    *reinterpret_cast<DWORD_PTR*>(&shell[5]) = ctx.Eip;
+    *reinterpret_cast<DWORD_PTR*>(&shell[14]) = reinterpret_cast<DWORD_PTR>(parameter);
+    *reinterpret_cast<DWORD_PTR*>(&shell[20]) = reinterpret_cast<DWORD_PTR>(startRoutine);
 #elif _M_X64
-            pdwptr = (PDWORD64)(((char*)ptr) + 29);
-            *pdwptr = ctx.Rip;
-
-            pdwptr = (PDWORD64)(((char*)ptr) + 47);
-            *pdwptr = (DWORD_PTR)lpParameter;
-
-            pdwptr = (PDWORD64)(((char*)ptr) + 60);
-            *pdwptr = (DWORD_PTR)lpReflectiveLoader;
+    *reinterpret_cast<DWORD_PTR*>(&shell[29]) = ctx.Rip;
+    *reinterpret_cast<DWORD_PTR*>(&shell[47]) = reinterpret_cast<DWORD_PTR>(parameter);
+    *reinterpret_cast<DWORD_PTR*>(&shell[60]) = reinterpret_cast<DWORD_PTR>(startRoutine);
 #endif
 
-            printf("\nWriting shellcode into target process.");
+    auto mem = ::VirtualAllocEx(process, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!mem)
+    {
+        printf("\nError: Unable to allocate memory in target process (%d)", GetLastError());
+        return false;
+    }
 
-            if (!WriteProcessMemory(hProcess, mem, ptr, sizeof(shell) + 10, NULL))
-            {
-                ResumeThread(targetThread);
-                continue;
-            }
+    if (!::WriteProcessMemory(process, mem, shell, sizeof(shell), nullptr))
+    {
+        return false;
+    }
 
 #if _M_X64
-            ctx.Rip = (DWORD64)mem;
+    ctx.Rip = reinterpret_cast<DWORD_PTR>(mem);
 #elif _M_IX86
-            ctx.Eip = (DWORD)mem;
+    ctx.Eip = reinterpret_cast<DWORD_PTR>(mem);
 #endif
 
-            printf("\nHijacking target thread.");
-
-            if (!SetThreadContext(targetThread, &ctx))
-            {
-                printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
-                ResumeThread(targetThread);
-                continue;
-            }
-
-            printf("\nResuming target thread.");
-
-            ResumeThread(targetThread);
-            CloseHandle(targetThread);
-        }
+    if (!::SetThreadContext(remoteThread, &ctx))
+    {
+        printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
+        return false;
     }
-    
-    return TRUE;
+
+    ::ResumeThread(remoteThread);
+    return true;
 }
 
 bool InjectUsingAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter, function<bool(PAPCFUNC, HANDLE, ULONG_PTR)> func)
