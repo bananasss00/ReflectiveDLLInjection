@@ -29,7 +29,6 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <conio.h>
 #include <atlbase.h>
 #include "LoadLibraryR.h"
 
@@ -37,46 +36,33 @@
 
 using namespace ATL;
 
-// Simple app to inject a reflective DLL into a process vis its process ID.
-int main(int argc, char * argv[])
+int main(int argc, char* argv[])
 {
-	DWORD processId       = ::GetCurrentProcessId();	
-	const char* dllFile   = "reflective_dll.dll";
-    InjectType injectType = kCreateRemoteThread;
-    LoaderType loaderType = kReflectiveLoader;
-
-    if (argc >= 2)
+    if (argc < 2)
     {
-        if (0 == lstrcmpi(argv[1], "help")
-            || 0 == lstrcmpi(argv[1], "?") 
-            || 0 == lstrcmpi(argv[1], "/?") 
-            || 0 == lstrcmpi(argv[1], "-help") 
-            || 0 == lstrcmpi(argv[1], "--help"))
-        {
-            printf(
-                "Usage: inject [pid] [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
-                "\t CRT   - CreateRemoteThread injection (default)\n"
-                "\t STC   - SetThreadContext injection\n"
-                "\t QUA   - QueueUserApc injection\n"
-                "\t NQAT  - NtQueueApcThread injection\n"
-                "\t NQATE - NtQueueApcThreadEx injection\n"
-                "\t R     - Reflective loader (default)\n"
-                "\t LW    - LoadLibraryW loader\n"
-                "\t LA    - LoadLibraryA loader\n"
-                );
-            return -1;
-        }
-
-        if (atoi(argv[1]) > 0)
-        {
-            processId = atoi(argv[1]);
-        }
+        printf(
+            "Usage: inject <pid> [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
+            "\t CRT   - CreateRemoteThread injection (default)\n"
+            "\t STC   - SetThreadContext injection\n"
+            "\t QUA   - QueueUserApc injection\n"
+            "\t NQAT  - NtQueueApcThread injection\n"
+            "\t NQATE - NtQueueApcThreadEx injection\n"
+            "\t R     - Reflective loader (default)\n"
+            "\t LW    - LoadLibraryW loader\n"
+            "\t LA    - LoadLibraryA loader\n"
+            );
+        return -1;
     }
+
+    const DWORD processId = atoi(argv[1]);
+    const char* dllFile = "reflective_dll.dll";
 
     if (argc >= 3)
     {
         dllFile = argv[2];
     }
+
+    InjectType injectType = kCreateRemoteThread;
 
     if (argc >= 4)
     {
@@ -102,6 +88,8 @@ int main(int argc, char * argv[])
         }
     }
 
+    LoaderType loaderType = kReflectiveLoader;
+
     if (argc >= 5)
     {
         if (0 == lstrcmpi(argv[4], "R"))
@@ -118,6 +106,7 @@ int main(int argc, char * argv[])
         }
     }
 
+    printf("pid: %d\n", processId);
     printf("Inject type: %s\n", InjectTypeToString(injectType));
     printf("Loader type: %s\n", LoaderTypeToString(loaderType));
 
@@ -172,12 +161,6 @@ int main(int argc, char * argv[])
         
 	printf("[+] Injected the '%s' DLL into process %d.\n", dllFile, processId);
 		
-    if (processId == GetCurrentProcessId())
-    {
-        printf("Press any key to exit...\n");
-        _getche();
-    }
-
 cleanup:
     if (hProcess)
     {
