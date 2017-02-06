@@ -132,6 +132,18 @@ int main(int argc, char* argv[])
         GOTO_CLEANUP_WITH_ERROR("Failed to open the target process");
     }
 
+    BOOL myWow64 = false;
+    ::IsWow64Process(::GetCurrentProcess(), &myWow64);
+
+    BOOL targetWow64 = false;
+    ::IsWow64Process(hProcess, &targetWow64);
+
+    if (myWow64 != targetWow64)
+    {
+        printf("[-] Bitness mismatch: Use 32-bit inject tool for 32-bit targets and 64-bit inject tool for 64-bit targets.");
+        goto cleanup;
+    }
+
     switch (loaderType)
     {
     case kReflectiveLoader:
