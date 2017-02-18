@@ -139,10 +139,39 @@ DWORD GetReflectiveLoaderOffset( VOID * lpReflectiveDllBuffer )
 	return 0;
 }
 
+bool InjectUsingChangeThreadEntryPoint(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
+{
+    auto fakeStart = reinterpret_cast<LPTHREAD_START_ROUTINE>(&ExitThread);
+    CHandle remoteThread(::CreateRemoteThread(process, nullptr, 0, fakeStart, parameter, CREATE_SUSPENDED, nullptr));
+
+    CONTEXT ctx = {};
+    ctx.ContextFlags = CONTEXT_FULL;
+
+    if (!::GetThreadContext(remoteThread, &ctx))
+    {
+        printf("\n Error: GetThreadContext failed %d\n", GetLastError());
+        return false;
+    }
+#ifdef _M_IX86
+    ctx.Eax = reinterpret_cast<DWORD>(startRoutine);
+#else
+    ctx.Rcx = reinterpret_cast<DWORD64>(startRoutine);
+#endif
+    if (!::SetThreadContext(remoteThread, &ctx))
+    {
+        printf("\nError: Unable to hijack target thread (%d)\n", GetLastError());
+        return false;
+    }
+
+    ResumeThread(remoteThread);
+
+    return !!remoteThread;
+}
+
 bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
 {
     CHandle remoteThread(::CreateRemoteThread(process, nullptr, 0x100000, startRoutine, parameter, 0, nullptr));
-    
+
     return !!remoteThread;
 }
 
@@ -408,6 +437,9 @@ BOOL WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPCSTR dllName, InjectType injec
     case kCreateRemoteThread:
         return InjectUsingCreateRemoteThread(hProcess, reflectiveLoader, lpParameter);
 
+    case kChangeThreadEntryPoint:
+        return InjectUsingChangeThreadEntryPoint(hProcess, reflectiveLoader, lpParameter);
+
     case kSetThreadContext:
         return InjectUsingSetThreadContext(hProcess, reflectiveLoader, lpParameter);
 
@@ -447,6 +479,9 @@ bool LoadRemoteLibrary(HANDLE hProcess, const basic_string<CharT>& dllName, Inje
     {
     case kCreateRemoteThread:
         return InjectUsingCreateRemoteThread(hProcess, loadLibrary, remoteDllName);
+
+    case kChangeThreadEntryPoint:
+        return InjectUsingChangeThreadEntryPoint(hProcess, loadLibrary, remoteDllName);
 
     case kSetThreadContext:
         return InjectUsingSetThreadContext(hProcess, loadLibrary, remoteDllName);

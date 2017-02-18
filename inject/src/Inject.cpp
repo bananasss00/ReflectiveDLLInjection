@@ -41,8 +41,9 @@ int main(int argc, char* argv[])
     if (argc < 2)
     {
         printf(
-            "Usage: inject <pid> [dll_file] [CRT|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
+            "Usage: inject <pid> [dll_file] [CRT|CTEP|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
             "\t CRT   - CreateRemoteThread injection (default)\n"
+            "\t CTEP  - Create new suspended thread and change entry point\n"
             "\t STC   - SetThreadContext injection\n"
             "\t QUA   - QueueUserApc injection\n"
             "\t NQAT  - NtQueueApcThread injection\n"
@@ -69,6 +70,10 @@ int main(int argc, char* argv[])
         if (0 == lstrcmpi(argv[3], "CRT"))
         {
             injectType = kCreateRemoteThread;
+        }
+        else if (0 == lstrcmpi(argv[3], "CTEP"))
+        {
+            injectType = kChangeThreadEntryPoint;
         }
         else if (0 == lstrcmpi(argv[3], "STC"))
         {

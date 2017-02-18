@@ -3,6 +3,7 @@
 enum InjectType
 {
     kCreateRemoteThread,
+    kChangeThreadEntryPoint,
     kSetThreadContext,
     kQueueUserAPC,
     kNtQueueApcThread,
@@ -15,6 +16,9 @@ inline const char* InjectTypeToString(InjectType injectType)
     {
     case kCreateRemoteThread:
         return "CreateRemoteThread";
+
+    case kChangeThreadEntryPoint:
+        return "ChangeThreadEntryPoint";
 
     case kSetThreadContext:
         return "SetThreadContext";
