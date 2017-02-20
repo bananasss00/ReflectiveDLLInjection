@@ -144,6 +144,12 @@ bool InjectUsingChangeThreadEntryPoint(HANDLE process, LPTHREAD_START_ROUTINE st
     auto fakeStart = reinterpret_cast<LPTHREAD_START_ROUTINE>(&ExitThread);
     CHandle remoteThread(::CreateRemoteThread(process, nullptr, 0, fakeStart, parameter, CREATE_SUSPENDED, nullptr));
 
+    if (!remoteThread)
+    {
+        printf("\nError: Unable to create remote thread %d\n", GetLastError());
+        return false;
+    }
+
     CONTEXT ctx = {};
     ctx.ContextFlags = CONTEXT_FULL;
 
@@ -165,7 +171,7 @@ bool InjectUsingChangeThreadEntryPoint(HANDLE process, LPTHREAD_START_ROUTINE st
 
     ResumeThread(remoteThread);
 
-    return !!remoteThread;
+    return true;
 }
 
 bool InjectUsingCreateRemoteThread(HANDLE process, LPTHREAD_START_ROUTINE startRoutine, LPVOID parameter)
