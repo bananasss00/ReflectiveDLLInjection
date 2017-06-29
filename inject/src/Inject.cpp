@@ -26,22 +26,77 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //===============================================================================================//
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
+#include <TlHelp32.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <atlbase.h>
+#include <iostream>
+#include <memory>
+#include <limits>
+#include <string>
 #include "LoadLibraryR.h"
 
 #pragma comment(lib,"Advapi32.lib")
 
 using namespace ATL;
 
+DWORD GetPid(const std::string& str)
+{
+    //
+    // str is a PID or a process name
+    //
+    try
+    {
+        size_t idx = 0;
+        auto val = std::stoull(str, &idx, 0);
+
+        if (val <= std::numeric_limits<DWORD>::max() && idx == str.size())
+        {
+            return static_cast<DWORD>(val);
+        }
+    }
+    catch (const std::exception&)
+    {
+        //
+        // str is process name, not a PID
+        //
+    }
+
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (INVALID_HANDLE_VALUE == hSnap)
+    {
+        std::cerr << "CreateToolhelp32Snapshot failed\n";
+        return 0;
+    }
+    CHandle guard(hSnap);
+
+    PROCESSENTRY32 pe = {};
+    pe.dwSize = sizeof(pe);
+
+    if (Process32First(hSnap, &pe))
+    {
+        do
+        {
+            if (0 == stricmp(str.c_str(), pe.szExeFile))
+            {
+                std::cout << "Found " << pe.szExeFile << " with ID " << pe.th32ParentProcessID << "\n";
+                return pe.th32ProcessID;
+            }
+        } while (Process32Next(hSnap, &pe));
+    }
+
+    std::cerr << "Can't find process with name '" << str << "'\n";
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
     if (argc < 2)
     {
         printf(
-            "Usage: inject <pid> [dll_file] [CRT|CTEP|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
+            "Usage: inject <pid|name> [dll_file] [CRT|CTEP|STC|QUA|NQAT|NQATE] [R|LW|LA]\n"
             "\t CRT   - CreateRemoteThread injection (default)\n"
             "\t CTEP  - Create new suspended thread and change entry point\n"
             "\t STC   - SetThreadContext injection\n"
@@ -55,8 +110,14 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    const DWORD processId = atoi(argv[1]);
     const char* dllFile = "reflective_dll.dll";
+    const DWORD processId = GetPid(argv[1]);
+
+    if (0 == processId)
+    {
+        std::cerr << "Invalid process ID\n";
+        return 1;
+    }
 
     if (argc >= 3)
     {
