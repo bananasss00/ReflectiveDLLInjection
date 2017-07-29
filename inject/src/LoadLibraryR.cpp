@@ -437,6 +437,20 @@ BOOL WINAPI LoadRemoteLibraryR(HANDLE hProcess, LPCSTR dllName, InjectType injec
 			
 	// add the offset to ReflectiveLoader() to the remote library address...
     auto reflectiveLoader = (LPTHREAD_START_ROUTINE)((ULONG_PTR)remoteLibraryBuffer + dwReflectiveLoaderOffset);
+	
+	// write func LdrpHandleTlsData offset for resolve TLS in to Loader
+	LPVOID remoteTlsData = ::VirtualAllocEx(hProcess, NULL, sizeof(TLS_DATA), MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	TLS_DATA TlsData;
+	TlsData.pLdrpHandleTlsData = GetLdrpHandleTlsDataOffset();
+	TlsData.win81orGreater = IsWindows8Point1OrGreater();
+
+	if (!TlsData.pLdrpHandleTlsData
+		|| !::WriteProcessMemory(hProcess, remoteTlsData, &TlsData, sizeof(TLS_DATA), NULL))
+	{
+		GOTO_CLEANUP_WITH_ERROR("Failed to get LdrpHandleTlsData offset!");
+	}
+
+	lpParameter = remoteTlsData;
 
     switch (injectType)
     {

@@ -43,6 +43,8 @@
 
 typedef ULONG_PTR (WINAPI * REFLECTIVELOADER)( VOID );
 typedef BOOL (WINAPI * DLLMAIN)( HINSTANCE, DWORD, LPVOID );
+typedef int(__stdcall* LdrpHandleTlsDataFnWin7)(ULONG_PTR);
+typedef int(__thiscall* LdrpHandleTlsDataFnWin81)(ULONG_PTR);
 
 #define DLLEXPORT   __declspec( dllexport ) 
 

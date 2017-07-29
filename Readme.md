@@ -1,3 +1,6 @@
+# Credits for Tls
+https://github.com/DarthTon/Blackbone
+
 # About
 
 This tool demonstrates various remote dll injection methods.

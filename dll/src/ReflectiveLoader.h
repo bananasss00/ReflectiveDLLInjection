@@ -190,6 +190,12 @@ typedef struct
 	WORD	offset:12;
 	WORD	type:4;
 } IMAGE_RELOC, *PIMAGE_RELOC;
+
+typedef struct 
+{
+	ULONG_PTR pLdrpHandleTlsData;
+	bool win81orGreater;
+} TLS_DATA, *PTLS_DATA;
 //===============================================================================================//
 #endif
 //===============================================================================================//
