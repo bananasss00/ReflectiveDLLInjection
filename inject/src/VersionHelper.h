@@ -30,7 +30,8 @@ enum eVerShort
     Win8Point1,     // Windows 8.1
     Win10,          // Windows 10
     Win10AU,        // Windows 10 Anniversary update
-    Win10CU         // Windows 10 Creators update
+    Win10CU,        // Windows 10 Creators update
+	Win10FC,        // Windows 10 Fall Creators update
 };
 
 struct WinVersion
@@ -59,7 +60,9 @@ inline void InitVersion()
         switch (fullver)
         {
         case _WIN32_WINNT_WIN10:
-            if (g_WinVer.native.dwBuildNumber >= 15063)
+            if (g_WinVer.native.dwBuildNumber >= 16299)
+                g_WinVer.ver = Win10FC;
+            else if (g_WinVer.native.dwBuildNumber >= 15063)
                 g_WinVer.ver = Win10CU;
             else if (g_WinVer.native.dwBuildNumber >= 14393)
                 g_WinVer.ver = Win10AU;
@@ -200,6 +203,12 @@ VERSIONHELPERAPI
 IsWindows10CreatorsOrGreater()
 {
     return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN10 ), LOBYTE( _WIN32_WINNT_WIN10 ), 0, 15063 );
+}
+
+VERSIONHELPERAPI
+IsWindows10FallCreatorsOrGreater()
+{
+    return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN10 ), LOBYTE( _WIN32_WINNT_WIN10 ), 0, 16299 );
 }
 
 VERSIONHELPERAPI

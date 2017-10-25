@@ -104,7 +104,14 @@ ULONG_PTR GetLdrpHandleTlsDataOffset()
 	
 	std::vector<size_t> foundData; 
 	ULONG_PTR m_LdrpHandleTlsData = 0;
+	
+	if (IsWindows10FallCreatorsOrGreater())
+	{
+		FindPattern("\x8b\xc1\x8d\x4d\xbc\x51", pStart, scanSize, foundData);
 
+		if (!foundData.empty())
+			m_LdrpHandleTlsData = (ULONG_PTR)(foundData.front() - 0x18);
+	}
 	if (IsWindows10CreatorsOrGreater())
 	{
 		FindPattern("\x8b\xc1\x8d\x4d\xbc\x51", pStart, scanSize, foundData);
