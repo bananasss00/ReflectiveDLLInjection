@@ -180,12 +180,14 @@
   <ItemGroup>
     <ClCompile Include="src\Inject.cpp" />
     <ClCompile Include="src\LoadLibraryR.cpp" />
+    <ClCompile Include="src\TlsUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\InjectType.h" />
     <ClInclude Include="src\LoaderType.h" />
     <ClInclude Include="src\LoadLibraryR.h" />
     <ClInclude Include="src\ReflectiveDLLInjection.h" />
+    <ClInclude Include="src\VersionHelper.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
