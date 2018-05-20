@@ -21,6 +21,16 @@
 
 typedef DWORD(__stdcall* fnRtlGetVersion )(PRTL_OSVERSIONINFOEXW lpVersionInformation);
 
+enum eBuildThreshold
+{
+    Build_RS0 = 10586,
+    Build_RS1 = 14393,
+    Build_RS2 = 15063,
+    Build_RS3 = 16299,
+    Build_RS4 = 17134,
+    Build_RS_MAX = 99999,
+};
+
 enum eVerShort
 {
     WinUnsupported, // Unsupported OS 
@@ -29,15 +39,16 @@ enum eVerShort
     Win8,           // Windows 8
     Win8Point1,     // Windows 8.1
     Win10,          // Windows 10
-    Win10AU,        // Windows 10 Anniversary update
-    Win10CU,        // Windows 10 Creators update
-	Win10FC,        // Windows 10 Fall Creators update
+    Win10_RS1,      // Windows 10 Anniversary update
+    Win10_RS2,      // Windows 10 Creators update
+    Win10_RS3,      // Windows 10 Fall Creators update
+    Win10_RS4,      // Windows 10 Spring Creators update
 };
 
 struct WinVersion
 {
     eVerShort ver = WinUnsupported;
-    RTL_OSVERSIONINFOEXW native;
+    RTL_OSVERSIONINFOEXW native = { };
 };
 
 inline WinVersion& WinVer()
@@ -60,13 +71,15 @@ inline void InitVersion()
         switch (fullver)
         {
         case _WIN32_WINNT_WIN10:
-            if (g_WinVer.native.dwBuildNumber >= 16299)
-                g_WinVer.ver = Win10FC;
-            else if (g_WinVer.native.dwBuildNumber >= 15063)
-                g_WinVer.ver = Win10CU;
-            else if (g_WinVer.native.dwBuildNumber >= 14393)
-                g_WinVer.ver = Win10AU;
-            else if (g_WinVer.native.dwBuildNumber >= 10586)
+            if (g_WinVer.native.dwBuildNumber >= Build_RS4)
+                g_WinVer.ver = Win10_RS4;
+            else if (g_WinVer.native.dwBuildNumber >= Build_RS3)
+                g_WinVer.ver = Win10_RS3;
+            else if (g_WinVer.native.dwBuildNumber >= Build_RS2)
+                g_WinVer.ver = Win10_RS2;
+            else if (g_WinVer.native.dwBuildNumber >= Build_RS1)
+                g_WinVer.ver = Win10_RS1;
+            else if (g_WinVer.native.dwBuildNumber >= Build_RS0)
                 g_WinVer.ver = Win10;
             break;
 
@@ -194,21 +207,27 @@ IsWindows10OrGreater()
 }
 
 VERSIONHELPERAPI
-IsWindows10AnniversaryOrGreater()
+IsWindows10RS1OrGreater()
 {
     return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN10 ), LOBYTE( _WIN32_WINNT_WIN10 ), 0, 14393 );
 }
 
 VERSIONHELPERAPI
-IsWindows10CreatorsOrGreater()
+IsWindows10RS2OrGreater()
 {
     return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN10 ), LOBYTE( _WIN32_WINNT_WIN10 ), 0, 15063 );
 }
 
 VERSIONHELPERAPI
-IsWindows10FallCreatorsOrGreater()
+IsWindows10RS3OrGreater()
 {
     return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN10 ), LOBYTE( _WIN32_WINNT_WIN10 ), 0, 16299 );
+}
+
+VERSIONHELPERAPI
+IsWindows10RS4OrGreater()
+{
+    return IsWindowsVersionOrGreater( HIBYTE( _WIN32_WINNT_WIN10 ), LOBYTE( _WIN32_WINNT_WIN10 ), 0, 17134 );
 }
 
 VERSIONHELPERAPI

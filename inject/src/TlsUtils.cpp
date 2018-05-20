@@ -105,14 +105,15 @@ ULONG_PTR GetLdrpHandleTlsDataOffset()
 	std::vector<size_t> foundData; 
 	ULONG_PTR m_LdrpHandleTlsData = 0;
 	
-	if (IsWindows10FallCreatorsOrGreater())
+	if (IsWindows10RS3OrGreater()) // Fall Creators
 	{
-		FindPattern("\x8b\xc1\x8d\x4d\xbc\x51", pStart, scanSize, foundData);
+		const auto pattern = IsWindows10RS4OrGreater() ? "\x8b\xc1\x8d\x4d\xac\x51" : "\x8b\xc1\x8d\x4d\xbc\x51";
+		FindPattern(pattern, pStart, scanSize, foundData);
 
 		if (!foundData.empty())
 			m_LdrpHandleTlsData = (ULONG_PTR)(foundData.front() - 0x18);
 	}
-	if (IsWindows10CreatorsOrGreater())
+	else if (IsWindows10RS2OrGreater()) // Creators
 	{
 		FindPattern("\x8b\xc1\x8d\x4d\xbc\x51", pStart, scanSize, foundData);
 
